@@ -115,7 +115,8 @@ public class Selector
     /// <summary>
     /// Add singers to the rotation.
     /// If nobody is in the rotation yet, the new singers are shuffled to make the first round.
-    /// Otherwise they are inserted right after the current singer and skipped until the next round.
+    /// Otherwise they are shuffled among themselves and inserted after the current singer (behind any
+    /// late singers already waiting there), and skipped until the next round.
     /// </summary>
     public void InsertSingers(IEnumerable<string> singers)
     {
@@ -132,13 +133,20 @@ public class Selector
             return;
         }
 
-        //late singers: place them right after whoever is singing, in the order they were picked
-        for (int i = 0; i < toAdd.Count; i++)
+        //late singers added together are shuffled among themselves
+        Rng.Shuffle(CollectionsMarshal.AsSpan(toAdd));
+
+        //they go after whoever is singing AND after any late singers already waiting there,
+        //so earlier arrivals keep their place in the queue
+        int insertAt = _index + 1;
+        while (insertAt < _currentRound.Count && _nextRound.Contains(_currentRound[insertAt]))
         {
-            _currentRound.Insert(_index + 1 + i, toAdd[i]);
-            _nextRound.Add(toAdd[i]);
-            _present.Add(toAdd[i]);
+            insertAt++;
         }
+
+        _currentRound.InsertRange(insertAt, toAdd);
+        _nextRound.AddRange(toAdd);
+        _present.UnionWith(toAdd);
     }
 
     /// <summary>

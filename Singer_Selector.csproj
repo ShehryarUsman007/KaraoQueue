@@ -9,7 +9,7 @@
 
         <!-- app info (shown in the Windows file properties and used by the installers) -->
         <Product>KaraoQueue</Product>
-        <Version>1.2.0</Version>
+        <Version>1.2.1</Version>
         <!-- program file name: KaraoQueue.exe / KaraoQueue (the project and code keep the Singer_Selector name) -->
         <AssemblyName>KaraoQueue</AssemblyName>
         <RootNamespace>Singer_Selector</RootNamespace>

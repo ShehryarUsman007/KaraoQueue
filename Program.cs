@@ -53,6 +53,11 @@ public class Program:Application
     private int _sizedForHeight;                 //usable screen height the window was last sized for
     private PointInt32 _lastPosition;            //window position at the previous check
 
+    //Linux/macOS: restoring the saved position happens in the first checks after the window appears
+    //(the system places new windows itself, and ignores moves before that)
+    private bool _restoreDone;
+    private int _restoreTries;
+
     private class TransparentButton : Button
     {
         public TransparentButton(string label, Color textColor, double fontSize) : base()
@@ -115,6 +120,10 @@ public class Program:Application
 
         AppWindow appWindow = _window.AppWindow;
         appWindow.Title = "KaraoQueue";
+        if (OperatingSystem.IsWindows())
+        {
+            RestorePosition(appWindow);     //back where it was last closed (first, so it's sized for that screen)
+        }
         FitToDisplay(appWindow);
 
 
@@ -139,6 +148,9 @@ public class Program:Application
             shownPresenter.IsAlwaysOnTop = true;
             onTopSet = true;
         };
+
+        //remember where the window was when the app is closed
+        _window.Closed += (_, _) => SavePosition(appWindow);
 
         //twice a second, check whether the window was dragged onto a different screen
         _lastPosition = appWindow.Position;
@@ -216,11 +228,94 @@ public class Program:Application
     }
 
     /// <summary>
+    /// Windows: move the window to where it was when the app was last closed, if that spot is still on a screen
+    /// (e.g. not on a monitor that has since been unplugged). Otherwise the system places it as usual.
+    /// </summary>
+    private void RestorePosition(AppWindow appWindow)
+    {
+        if (_settings.WindowX is not int x || _settings.WindowY is not int y) return;
+
+        //Windows: check a point just inside the window's top-left is on a connected screen
+        if (OperatingSystem.IsWindows()
+            && MonitorFromPoint(new WinPoint { X = x + 50, Y = y + 50 }, MonitorDefaultToNull) == IntPtr.Zero)
+        {
+            return;
+        }
+
+        appWindow.Move(new PointInt32(x, y));
+    }
+
+    /// <summary>
+    /// Linux/macOS version of RestorePosition, run by the twice-a-second check until it's done:
+    /// move to the saved spot, then look where the window landed on the next check.
+    /// - Off by a little (the title bar / frame: moving and reading the position measure slightly different
+    ///   corners there): move once more to make up for it, so the window doesn't creep every time it's reopened.
+    /// - Off by a lot: the system was still placing the new window and overrode the move, so move again
+    ///   (a few tries at most).
+    /// </summary>
+    private void RestorePositionLater(AppWindow appWindow)
+    {
+        const int FrameSlack = 100;     //largest title bar / frame difference expected, in pixels
+        const int MaxTries = 4;
+
+        if (_settings.WindowX is not int x || _settings.WindowY is not int y || _restoreTries >= MaxTries)
+        {
+            _restoreDone = true;
+            return;
+        }
+
+        if (_restoreTries == 0)
+        {
+            appWindow.Move(new PointInt32(x, y));
+            _restoreTries++;
+            return;
+        }
+
+        PointInt32 landed = appWindow.Position;
+        int offsetX = landed.X - x;
+        int offsetY = landed.Y - y;
+        if (Math.Abs(offsetX) > FrameSlack || Math.Abs(offsetY) > FrameSlack)
+        {
+            appWindow.Move(new PointInt32(x, y));       //overridden by the system: try again
+            _restoreTries++;
+            return;
+        }
+
+        if (offsetX != 0 || offsetY != 0)
+        {
+            appWindow.Move(new PointInt32(x - offsetX, y - offsetY));
+        }
+        _restoreDone = true;
+    }
+
+    /// <summary>Save the window's current position to settings.txt (called when the app closes).</summary>
+    private void SavePosition(AppWindow appWindow)
+    {
+        _settings.WindowX = appWindow.Position.X;
+        _settings.WindowY = appWindow.Position.Y;
+        try
+        {
+            _settings.Save();
+        }
+        catch (Exception)
+        {
+            //not worth an error message while closing; it just opens in the default spot next time
+        }
+    }
+
+    /// <summary>
     /// Runs twice a second. Once the window has stopped moving, re-fit it if the screen it's on
     /// has a different height than the one it was sized for (e.g. dragged from a 1080p to a 4K screen).
     /// </summary>
     private void CheckDisplay(AppWindow appWindow)
     {
+        if (!OperatingSystem.IsWindows() && !_restoreDone)
+        {
+            RestorePositionLater(appWindow);
+            _lastPosition = appWindow.Position;     //our own moves aren't a drag
+            return;
+        }
+
         PointInt32 position = appWindow.Position;
         bool stillMoving = position.X != _lastPosition.X || position.Y != _lastPosition.Y;
         _lastPosition = position;
@@ -248,6 +343,7 @@ public class Program:Application
     [StructLayout(LayoutKind.Sequential)]
     private struct MonitorInfo { public int Size; public Rect Screen; public Rect WorkArea; public uint Flags; }
 
+    private const uint MonitorDefaultToNull = 0;        //no screen at that point → returns zero
     private const uint MonitorDefaultToNearest = 2;
 
     [DllImport("user32.dll")]

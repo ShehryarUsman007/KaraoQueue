@@ -3,7 +3,8 @@ using Windows.UI;
 namespace Singer_Selector;
 
 /// <summary>
-/// The settings the user can change in the Options menu: colours, text sizes and the Shuffle button.
+/// The settings the user can change in the Options menu (colours, text sizes, the Shuffle button)
+/// plus where the window was last closed.
 /// Only R, G and B are editable for colours; every alpha (A) value is fixed.
 /// Saved next to the singers file as settings.txt so they survive restarts.
 /// </summary>
@@ -30,10 +31,14 @@ public class AppSettings
 
     //editable text sizes
     public int ButtonFontSize = 26;
-    public int NameFontSize = 26;
+    public int NameFontSize = 22;
 
     //whether the Add menu has a Shuffle button (the first add of the night always shuffles)
     public bool ShowShuffle = false;
+
+    //where the window was when the app was last closed (screen pixels, top-left corner); null = never saved
+    public int? WindowX;
+    public int? WindowY;
 
     private readonly string _fileName;
 
@@ -50,10 +55,22 @@ public class AppSettings
 
         foreach (string line in File.ReadAllLines(_fileName))
         {
-            //format:  Name=R,G,B   or   Name=size   or   Name=true/false
+            //format:  Name=R,G,B   or   Name=size   or   Name=true/false   or   WindowPosition=x,y
             string[] parts = line.Split('=');
             if (parts.Length != 2) continue;
             string key = parts[0].Trim();
+
+            //window position: two numbers (can be negative on a screen left of / above the main one)
+            if (key == "WindowPosition")
+            {
+                string[] xy = parts[1].Split(',');
+                if (xy.Length == 2 && int.TryParse(xy[0], out int x) && int.TryParse(xy[1], out int y))
+                {
+                    WindowX = x;
+                    WindowY = y;
+                }
+                continue;
+            }
 
             //on/off settings
             if (bool.TryParse(parts[1], out bool on))
@@ -97,7 +114,7 @@ public class AppSettings
     public void Save()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_fileName)!);
-        File.WriteAllLines(_fileName, new[]
+        List<string> lines = new List<string>
         {
             $"ButtonText={ButtonText.R},{ButtonText.G},{ButtonText.B}",
             $"Gradient={Gradient.R},{Gradient.G},{Gradient.B}",
@@ -106,6 +123,11 @@ public class AppSettings
             $"ButtonFontSize={ButtonFontSize}",
             $"NameFontSize={NameFontSize}",
             $"ShowShuffle={ShowShuffle}",
-        });
+        };
+        if (WindowX is int x && WindowY is int y)
+        {
+            lines.Add($"WindowPosition={x},{y}");
+        }
+        File.WriteAllLines(_fileName, lines);
     }
 }
