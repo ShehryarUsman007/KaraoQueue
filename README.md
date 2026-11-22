@@ -1,13 +1,15 @@
 # Karaoke Shuffler
 
-A **very basic** karaoke singer rotation app. It was made at the request of a karaoke group in Windsor, Ontario, and built around exactly what they needed — nothing more. It isn't meant to be a general-purpose karaoke tool, so **anyone is free to modify it however they like** for their own group (see [LICENSE](LICENSE)).
+A **very basic** karaoke singer rotation app. It was made at the request of a karaoke group in Windsor, Ontario, and built around exactly what they needed, nothing more. It isn't meant to be a general-purpose karaoke tool, so **anyone is free to modify it however they like** for their own group (see [LICENSE](LICENSE)).
 
 ## Download
 
-Get the latest version from the [Releases page](https://github.com/ShehryarUsman007/Kareoke-Shuffler/releases/latest). Nothing else needs to be installed: .NET is bundled.
+Get the latest version from the [Releases page](https://github.com/ShehryarUsman007/Karaoke-Shuffler/releases/latest). Nothing else needs to be installed: .NET is bundled.
 
 - **Windows:** `…-Setup.exe` (installer, no admin rights needed)
-- **Ubuntu / Debian:** `.deb` — **Fedora / openSUSE:** `.rpm` — **any Linux:** `.AppImage`
+- **Ubuntu / Debian:** `.deb`
+- **Fedora / openSUSE:** `.rpm`
+- **Any Linux:** `.AppImage`
 - **Mac:** `…-macOS-AppleSilicon.zip` (M1–M4) or `…-macOS-Intel.zip`. The Mac app isn't signed by Apple, so the first time it's blocked: open it once, then go to System Settings → Privacy & Security → **Open Anyway**.
 
 ## What it does
@@ -47,7 +49,7 @@ GitHub Actions runs the same script on every push. Pushing a tag like `v1.0.0` (
 
 ## Code layout
 
-- `Program.cs` — the window, layout, buttons, pop-up menus and screen scaling
-- `Selector.cs` — the rotation logic (shuffle, late singers, next/previous, add/remove)
-- `ColorSettings.cs` — the Options colours and saving/loading them
-- `packaging/` — icon, installer/package definitions and the build script
+- `Program.cs`: the window, layout, buttons, pop-up menus and screen scaling
+- `Selector.cs`: the rotation logic (shuffle, late singers, next/previous, add/remove)
+- `ColorSettings.cs`: the Options colours and saving/loading them
+- `packaging/`: icon, installer/package definitions and the build script

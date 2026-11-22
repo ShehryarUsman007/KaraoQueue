@@ -7,7 +7,7 @@ Version:        %{_version}
 Release:        1
 Summary:        Shuffle and track the karaoke singer rotation
 License:        Apache-2.0
-URL:            https://github.com/ShehryarUsman007/Kareoke-Shuffler
+URL:            https://github.com/ShehryarUsman007/Karaoke-Shuffler
 ExclusiveArch:  x86_64
 
 # .NET is bundled; these are the system libraries the app's UI needs

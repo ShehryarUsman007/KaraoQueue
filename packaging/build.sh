@@ -63,7 +63,7 @@ Installed-Size: $(du -sk "$DEB" | cut -f1)
 Depends: libx11-6, libxext6, libxfixes3, libxi6, libxrandr2, libfontconfig1, libfreetype6, libicu70 | libicu72 | libicu74 | libicu76 | libicu77 | libicu78, xdg-utils
 Section: sound
 Priority: optional
-Homepage: https://github.com/ShehryarUsman007/Kareoke-Shuffler
+Homepage: https://github.com/ShehryarUsman007/Karaoke-Shuffler
 Description: Shuffle and track the karaoke singer rotation
  A very basic karaoke singer rotation app, made for a karaoke group in
  Windsor, Ontario. Shuffles the singers, highlights whose turn it is and
