@@ -1,8 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Karaoke Shuffler
+Name=KaraoQueue
 Comment=Shuffle and track the karaoke singer rotation
-Exec=karaoke-shuffler
-Icon=karaoke-shuffler
+Exec=karaoqueue
+Icon=karaoqueue
 Terminal=false
 Categories=AudioVideo;Audio;
+StartupWMClass=KaraoQueue

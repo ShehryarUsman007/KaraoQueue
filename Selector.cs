@@ -9,8 +9,8 @@ namespace Singer_Selector;
 /// </summary>
 public class Selector
 {
-    private HashSet<string> _present;     //singers that have been added to tonight's rotation
-    private HashSet<string> _everyone;    //every singer saved in the singers file
+    private SortedSet<string> _present;   //singers that have been added to tonight's rotation (kept alphabetical)
+    private SortedSet<string> _everyone;  //every singer saved in the singers file (kept alphabetical)
     private List<string> _currentRound;   //the singing order shown in the pane
     private List<string> _nextRound;      //late singers: shown in the order but skipped until the next round
     private string _fileName;             //full path to the singers file
@@ -18,6 +18,9 @@ public class Selector
 
     //shared random number generator for the shuffle
     private static readonly Random Rng = new Random();
+
+    //alphabetical order that ignores upper/lower case ("amy" next to "Amy", not after "Zoe")
+    private static readonly StringComparer Alphabetical = StringComparer.CurrentCultureIgnoreCase;
 
     // ---------- read-only views for the UI ----------
 
@@ -37,21 +40,40 @@ public class Selector
     public List<string> Absent()
     {
         ReadFile();     //re-read in case the file was edited with "Edit File"
-        return _everyone.Where(s => !_present.Contains(s)).OrderBy(s => s).ToList();
+        return _everyone.Where(s => !_present.Contains(s)).ToList();
     }
 
     /// <summary>Singers currently in the rotation, alphabetical.</summary>
-    public List<string> Present() => _present.OrderBy(s => s).ToList();
+    public List<string> Present() => _present.ToList();
 
     // ---------- file handling ----------
 
-    /// <summary>Default file location: %AppData%\Singer_Selector\singers.txt on Windows (~/.config/... on Linux).</summary>
+    /// <summary>Default file location: %AppData%\KaraoQueue\singers.txt on Windows (~/.config/KaraoQueue on Linux).</summary>
     public static string DefaultFileName()
     {
-        string folder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Singer_Selector");
+        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        string folder = Path.Combine(appData, "KaraoQueue");
+        CopyOldData(Path.Combine(appData, "Singer_Selector"), folder);
         return Path.Combine(folder, "singers.txt");
+    }
+
+    /// <summary>
+    /// Version 1.0.0 (named Karaoke Shuffler) kept its files in a "Singer_Selector" folder.
+    /// The first time the renamed app runs, copy them over so nobody loses their singer list.
+    /// </summary>
+    private static void CopyOldData(string oldFolder, string newFolder)
+    {
+        if (Directory.Exists(newFolder) || !Directory.Exists(oldFolder)) return;
+
+        Directory.CreateDirectory(newFolder);
+        foreach (string file in new[] { "singers.txt", "settings.txt" })
+        {
+            string oldFile = Path.Combine(oldFolder, file);
+            if (File.Exists(oldFile))
+            {
+                File.Copy(oldFile, Path.Combine(newFolder, file));
+            }
+        }
     }
 
     //create the folder and an empty file if they don't exist yet
@@ -207,8 +229,8 @@ public class Selector
     public Selector(string fileName)
     {
         _fileName = fileName;
-        _present = new HashSet<string>();
-        _everyone = new HashSet<string>();
+        _present = new SortedSet<string>(Alphabetical);
+        _everyone = new SortedSet<string>(Alphabetical);
         _currentRound = new List<string>();
         _nextRound = new List<string>();
         _index = -1;     //nobody is singing until singers are added

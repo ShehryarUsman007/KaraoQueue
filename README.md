@@ -1,4 +1,4 @@
-# Karaoke Shuffler
+# KaraoQueue
 
 A **very basic** karaoke singer rotation app. It was made at the request of a karaoke group in Windsor, Ontario, and built around exactly what they needed, nothing more. It isn't meant to be a general-purpose karaoke tool, so **anyone is free to modify it however they like** for their own group (see [LICENSE](LICENSE)).
 
@@ -17,19 +17,19 @@ Get the latest version from the [Releases page](https://github.com/ShehryarUsman
 - Pick tonight's singers from a saved list and shuffle the order (Fisher–Yates shuffle).
 - **Next / Previous** move through the turns; the current singer is highlighted in a scrollable list.
 - **Late singers** are inserted right after whoever is singing, but skipped until the next round starts.
-- **Add Singer / Remove Singer** open a checklist of names, with a **Shuffle** button to reshuffle at any time.
-- **Options** lets you set the RGB colours of the button text, background gradient, highlight and names.
-- **Edit File** opens the saved singer list (one name per line) in your text editor.
-- The window and everything in it scale to the screen, so it looks the same on HD, 1440p or 4K displays.
+- **Add / Remove** open an alphabetical checklist of names. The first add of the night shuffles automatically; a **Shuffle** button for reshuffling later can be turned on in Options.
+- **Options → Settings** lets you set the RGB colours of the button text, background gradient, highlight and names, make the button and name text bigger or smaller, and turn the Shuffle button on or off.
+- **Options → Edit File** opens the saved singer list (one name per line) in your default text editor.
+- The window is as tall as the screen and everything in it scales, so it looks the same on HD, 1440p or 4K displays. Dragging it onto a screen with a different resolution resizes it to fit.
 
 ## Where the data is stored
 
 | File | Contents |
 |---|---|
-| `%AppData%\Singer_Selector\singers.txt` | saved singer names, one per line |
-| `%AppData%\Singer_Selector\settings.txt` | colours chosen in Options |
+| `%AppData%\KaraoQueue\singers.txt` | saved singer names, one per line |
+| `%AppData%\KaraoQueue\settings.txt` | colours, text sizes and the Shuffle setting chosen in Options → Settings |
 
-(On Linux/macOS this is `~/.config/Singer_Selector/`.)
+(On Linux/macOS this is `~/.config/KaraoQueue/`. Version 1.0.0, then called Karaoke Shuffler, used a `Singer_Selector` folder; KaraoQueue copies it over on first start.)
 
 ## Building from source
 
@@ -45,11 +45,11 @@ It runs on Windows, Linux and macOS.
 
 `packaging/build.sh` builds the Windows installer, .deb, .rpm, AppImage and macOS zips into `dist/`. It needs `makensis` (NSIS), `rpmbuild`, `dpkg-deb`, `rsvg-convert` and `zip`.
 
-GitHub Actions runs the same script on every push. Pushing a tag like `v1.0.0` (matching `<Version>` in `Singer_Selector.csproj`) creates a draft release with all the files attached.
+GitHub Actions runs the same script on every push. Pushing a tag like `v1.1.0` (matching `<Version>` in `Singer_Selector.csproj`) creates a draft release with all the files attached.
 
 ## Code layout
 
 - `Program.cs`: the window, layout, buttons, pop-up menus and screen scaling
 - `Selector.cs`: the rotation logic (shuffle, late singers, next/previous, add/remove)
-- `ColorSettings.cs`: the Options colours and saving/loading them
+- `AppSettings.cs`: the Options colours and text sizes, and saving/loading them
 - `packaging/`: icon, installer/package definitions and the build script

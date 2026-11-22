@@ -1,14 +1,15 @@
-; Windows installer for Karaoke Shuffler (built with NSIS).
+; Windows installer for KaraoQueue (built with NSIS).
 ; Installs for the current user only, so no admin rights are needed.
 ; The app is self-contained: .NET is bundled, nothing else has to be installed.
 ;
 ; Build:  makensis -DVERSION=1.0.0 -DSRCDIR=<published win-x64 folder> -DOUTFILE=<setup.exe> installer.nsi
 
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
 
-!define APPNAME "Karaoke Shuffler"
-!define EXENAME "Singer_Selector.exe"
-!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\KaraokeShuffler"
+!define APPNAME "KaraoQueue"
+!define EXENAME "KaraoQueue.exe"
+!define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\KaraoQueue"
 
 Name "${APPNAME}"
 OutFile "${OUTFILE}"
@@ -16,13 +17,14 @@ Unicode true
 SetCompressor /SOLID lzma
 RequestExecutionLevel user                          ; per-user install, no UAC prompt
 InstallDir "$LOCALAPPDATA\Programs\${APPNAME}"
-InstallDirRegKey HKCU "Software\KaraokeShuffler" "InstallDir"
+InstallDirRegKey HKCU "Software\KaraoQueue" "InstallDir"
 
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey "ProductName" "${APPNAME}"
 VIAddVersionKey "FileDescription" "${APPNAME} Setup"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
+VIAddVersionKey "LegalCopyright" "Shehryar Usman, Apache License 2.0"
 
 !define MUI_ICON "icon.ico"
 !define MUI_UNICON "icon.ico"
@@ -44,6 +46,15 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 Section "${APPNAME}" SecApp
     SectionIn RO                                    ; required
+
+    ; version 1.0.0 was called "Karaoke Shuffler": uninstall it first so there aren't two copies
+    ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\KaraokeShuffler" "InstallLocation"
+    ${If} $0 != ""
+    ${AndIf} ${FileExists} "$0\Uninstall.exe"
+        ExecWait '"$0\Uninstall.exe" /S _?=$0'     ; _?= makes it wait until the old uninstall is done
+        Delete "$0\Uninstall.exe"
+        RMDir "$0"
+    ${EndIf}
     SetOutPath "$INSTDIR"
     File /r "${SRCDIR}\*.*"
 
@@ -52,7 +63,7 @@ Section "${APPNAME}" SecApp
 
     ; uninstaller + entry in "Apps & features"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
-    WriteRegStr HKCU "Software\KaraokeShuffler" "InstallDir" "$INSTDIR"
+    WriteRegStr HKCU "Software\KaraoQueue" "InstallDir" "$INSTDIR"
     WriteRegStr HKCU "${UNINSTKEY}" "DisplayName" "${APPNAME}"
     WriteRegStr HKCU "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
     WriteRegStr HKCU "${UNINSTKEY}" "DisplayIcon" "$INSTDIR\${EXENAME}"
@@ -67,10 +78,10 @@ Section "Desktop shortcut" SecDesktop
 SectionEnd
 
 Section "Uninstall"
-    ; removes the program only; the singer list and colours in %AppData%\Singer_Selector are kept
+    ; removes the program only; the singer list and colours in %AppData%\KaraoQueue are kept
     Delete "$SMPROGRAMS\${APPNAME}.lnk"
     Delete "$DESKTOP\${APPNAME}.lnk"
     RMDir /r "$INSTDIR"
     DeleteRegKey HKCU "${UNINSTKEY}"
-    DeleteRegKey HKCU "Software\KaraokeShuffler"
+    DeleteRegKey HKCU "Software\KaraoQueue"
 SectionEnd

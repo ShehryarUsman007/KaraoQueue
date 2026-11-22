@@ -8,11 +8,20 @@
         <Nullable>enable</Nullable>
 
         <!-- app info (shown in the Windows file properties and used by the installers) -->
-        <Product>Karaoke Shuffler</Product>
-        <Version>1.0.0</Version>
+        <Product>KaraoQueue</Product>
+        <Version>1.1.0</Version>
+        <!-- program file name: KaraoQueue.exe / KaraoQueue (the project and code keep the Singer_Selector name) -->
+        <AssemblyName>KaraoQueue</AssemblyName>
+        <RootNamespace>Singer_Selector</RootNamespace>
         <ApplicationIcon>packaging\icon.ico</ApplicationIcon>
 
         <!-- installer scripts and build output aren't part of the app itself -->
         <DefaultItemExcludes>$(DefaultItemExcludes);packaging/**;dist/**</DefaultItemExcludes>
     </PropertyGroup>
+
+    <ItemGroup>
+        <!-- window/taskbar icon, loaded at startup from next to the program -->
+        <None Include="packaging/icon.ico" Link="icon.ico" CopyToOutputDirectory="PreserveNewest" />
+        <None Include="packaging/icon.png" Link="icon.png" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
 </Project>

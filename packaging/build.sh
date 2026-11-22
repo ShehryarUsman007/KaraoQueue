@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Builds every release file into dist/:
-#   KaraokeShuffler-<version>-Setup.exe        Windows installer (.NET bundled, no admin needed)
-#   karaoke-shuffler_<version>_amd64.deb       Debian / Ubuntu / Mint
-#   karaoke-shuffler-<version>-1.x86_64.rpm    Fedora / openSUSE / RHEL
-#   KaraokeShuffler-<version>-x86_64.AppImage  any Linux, runs without installing
-#   KaraokeShuffler-<version>-macOS-AppleSilicon.zip / -macOS-Intel.zip
+#   KaraoQueue-<version>-Setup.exe        Windows installer (.NET bundled, no admin needed)
+#   karaoqueue_<version>_amd64.deb       Debian / Ubuntu / Mint
+#   karaoqueue-<version>-1.x86_64.rpm    Fedora / openSUSE / RHEL
+#   KaraoQueue-<version>-x86_64.AppImage  any Linux, runs without installing
+#   KaraoQueue-<version>-macOS-AppleSilicon.zip / -macOS-Intel.zip
 #                                              unsigned .app bundles (macOS 12+)
 #
 # Needs: .NET 10 SDK, makensis (Fedora: mingw32-nsis, Debian: nsis), rpmbuild (rpm-build), dpkg-deb (dpkg).
@@ -21,7 +21,7 @@ PKG="$(cd "$(dirname "$0")" && pwd)"          # this packaging folder
 ROOT="$(dirname "$PKG")"                       # project folder
 DIST="$ROOT/dist"
 VERSION="$(grep -oP '(?<=<Version>)[^<]+' "$ROOT/Singer_Selector.csproj")"
-APPNAME="karaoke-shuffler"
+APPNAME="karaoqueue"
 
 rm -rf "$DIST"/app-* "$DIST/stage"
 mkdir -p "$DIST/stage" "$DIST/tools"
@@ -42,18 +42,18 @@ for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
     dir="$DIST/app-$rid"
     find "$dir" -type d -exec chmod 755 {} +
     find "$dir" -type f -exec chmod 644 {} +
-    find "$dir" -type f \( -name '*.so' -o -name '*.dylib' -o -name 'Singer_Selector' -o -name 'createdump' \) -exec chmod 755 {} +
+    find "$dir" -type f \( -name '*.so' -o -name '*.dylib' -o -name 'KaraoQueue' -o -name 'createdump' \) -exec chmod 755 {} +
 done
 
 # ---------- 2. Windows installer ----------
 (cd "$PKG" && makensis -V2 -DVERSION="$VERSION" -DSRCDIR="$DIST/app-win-x64" \
-    -DOUTFILE="$DIST/KaraokeShuffler-$VERSION-Setup.exe" installer.nsi)
+    -DOUTFILE="$DIST/KaraoQueue-$VERSION-Setup.exe" installer.nsi)
 
 # ---------- 3. shared Linux file layout: /opt app, /usr/bin link, menu entry, icons ----------
 lay_out() {     # $1 = root folder to fill
     mkdir -p "$1/opt/$APPNAME" "$1/usr/bin"
     cp -a "$DIST/app-linux-x64/." "$1/opt/$APPNAME/"
-    ln -sf "/opt/$APPNAME/Singer_Selector" "$1/usr/bin/$APPNAME"
+    ln -sf "/opt/$APPNAME/KaraoQueue" "$1/usr/bin/$APPNAME"
     install -Dm644 "$PKG/$APPNAME.desktop" "$1/usr/share/applications/$APPNAME.desktop"
     install -Dm644 "$PKG/icon.png" "$1/usr/share/icons/hicolor/256x256/apps/$APPNAME.png"
     install -Dm644 "$PKG/icon.svg" "$1/usr/share/icons/hicolor/scalable/apps/$APPNAME.svg"
@@ -70,6 +70,8 @@ Architecture: amd64
 Maintainer: Shehryar Usman <94995564+ShehryarUsman007@users.noreply.github.com>
 Installed-Size: $(du -sk "$DEB" | cut -f1)
 Depends: libx11-6, libxext6, libxfixes3, libxi6, libxrandr2, libfontconfig1, libfreetype6, libicu70 | libicu72 | libicu74 | libicu76 | libicu77 | libicu78, xdg-utils
+Conflicts: karaoke-shuffler
+Replaces: karaoke-shuffler
 Section: sound
 Priority: optional
 Homepage: https://github.com/ShehryarUsman007/Karaoke-Shuffler
@@ -101,7 +103,7 @@ if [ "${SKIP_APPIMAGE:-}" != 1 ]; then
     # AppRun: starts the bundled app from wherever the AppImage is mounted
     printf '%s\n' '#!/bin/sh' \
         'HERE="$(dirname "$(readlink -f "$0")")"' \
-        'exec "$HERE/usr/lib/karaoke-shuffler/Singer_Selector" "$@"' > "$APPDIR/AppRun"
+        'exec "$HERE/usr/lib/karaoqueue/KaraoQueue" "$@"' > "$APPDIR/AppRun"
     chmod +x "$APPDIR/AppRun"
 
     TOOL="$DIST/tools/appimagetool-x86_64.AppImage"
@@ -109,12 +111,12 @@ if [ "${SKIP_APPIMAGE:-}" != 1 ]; then
         curl -fL -o "$TOOL" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
         chmod +x "$TOOL"
     fi
-    ARCH=x86_64 "$TOOL" --appimage-extract-and-run "$APPDIR" "$DIST/KaraokeShuffler-$VERSION-x86_64.AppImage"
+    ARCH=x86_64 "$TOOL" --appimage-extract-and-run "$APPDIR" "$DIST/KaraoQueue-$VERSION-x86_64.AppImage"
 fi
 
 # ---------- 7. macOS .app bundles (zipped) ----------
 # Uno only builds .app bundles when run on a Mac, so the bundle is put together here by hand:
-#   Karaoke Shuffler.app/Contents/{Info.plist, MacOS/<app files>, Resources/icon.icns}
+#   KaraoQueue.app/Contents/{Info.plist, MacOS/<app files>, Resources/icon.icns}
 # Not signed by Apple: first launch needs System Settings > Privacy & Security > "Open Anyway".
 
 # .icns icon = "icns" header followed by PNG entries (ic07=128, ic08=256, ic09=512, ic10=1024 px)
@@ -132,7 +134,7 @@ PY
 
 make_app() {    # $1 = runtime id, $2 = label used in the zip name
     local out="$DIST/stage/$1"
-    local app="$out/Karaoke Shuffler.app/Contents"
+    local app="$out/KaraoQueue.app/Contents"
     mkdir -p "$app/MacOS" "$app/Resources"
     cp -a "$DIST/app-$1/." "$app/MacOS/"
     cp "$ICNS" "$app/Resources/icon.icns"
@@ -141,10 +143,10 @@ make_app() {    # $1 = runtime id, $2 = label used in the zip name
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>               <string>Karaoke Shuffler</string>
-    <key>CFBundleDisplayName</key>        <string>Karaoke Shuffler</string>
-    <key>CFBundleIdentifier</key>         <string>io.github.shehryarusman007.karaokeshuffler</string>
-    <key>CFBundleExecutable</key>         <string>Singer_Selector</string>
+    <key>CFBundleName</key>               <string>KaraoQueue</string>
+    <key>CFBundleDisplayName</key>        <string>KaraoQueue</string>
+    <key>CFBundleIdentifier</key>         <string>io.github.shehryarusman007.karaoqueue</string>
+    <key>CFBundleExecutable</key>         <string>KaraoQueue</string>
     <key>CFBundleIconFile</key>           <string>icon.icns</string>
     <key>CFBundlePackageType</key>        <string>APPL</string>
     <key>CFBundleVersion</key>            <string>$VERSION</string>
@@ -155,7 +157,7 @@ make_app() {    # $1 = runtime id, $2 = label used in the zip name
 </plist>
 PLIST
     # -y keeps symlinks, zip keeps the executable permissions macOS needs
-    (cd "$out" && zip -qry "$DIST/KaraokeShuffler-$VERSION-macOS-$2.zip" "Karaoke Shuffler.app")
+    (cd "$out" && zip -qry "$DIST/KaraoQueue-$VERSION-macOS-$2.zip" "KaraoQueue.app")
 }
 rm -f "$DIST"/*-macOS-*.zip
 make_app osx-arm64 AppleSilicon
@@ -164,4 +166,4 @@ make_app osx-x64 Intel
 rm -rf "$DIST/stage"
 echo
 echo "Done:"
-ls -lh "$DIST"/KaraokeShuffler-* "$DIST"/karaoke-shuffler*
+ls -lh "$DIST"/KaraoQueue-* "$DIST"/karaoqueue*

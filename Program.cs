@@ -1,11 +1,13 @@
 ﻿using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Windows.Foundation;
+using Windows.Graphics;
 using Windows.UI;
 using Windows.UI.Text;
 using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Uno.UI.Hosting;
 
 namespace  Singer_Selector;
@@ -16,34 +18,44 @@ public class Program:Application
 {
     //the UI is laid out at this size, then scaled as a whole to fit the window,
     //so it keeps the same proportions on HD, 1440p, 4K, etc.
-    private const double DesignWidth = 800;
+    private const double DesignWidth = 440;
     private const double DesignHeight = 900;
 
-    //fraction of the screen's usable height the window takes up
-    private const double ScreenFraction = 0.85;
+    //Linux/macOS only report the full screen height, so leave room for the top bar / menu bar, dock and title bar
+    private const double FullScreenFraction = 0.9;
 
     private Window? _window;
     private Selector _selector = null!;          //backend: singers + turn order
-    private ColorSettings _settings = null!;     //colours from the Options menu
+    private AppSettings _settings = null!;       //colours and text sizes from the Options menu
 
     private Grid _stage = null!;                 //holds the main layout grid + any open menu
     private GradientStop _gradientColor = null!; //the editable (bottom) colour of the background
     private StackPanel _namesPanel = null!;      //the list of names inside the scrollable pane
     private readonly List<TransparentButton> _buttons = new List<TransparentButton>();
 
+    //display tracking: the window is resized when it's dragged onto a screen with a different height
+    private DispatcherTimer _displayWatcher = null!;
+    private int _sizedForHeight;                 //usable screen height the window was last sized for
+    private PointInt32 _lastPosition;            //window position at the previous check
+
     private class TransparentButton : Button
     {
-        public TransparentButton(string label, Color textColor) : base()
+        public TransparentButton(string label, Color textColor, double fontSize) : base()
         {
             this.DefaultStyleKey = typeof(Button);
-            this.Content = label;
+            //the Viewbox shrinks the label only if it doesn't fit, so big text sizes never get cut off
+            this.Content = new Viewbox()
+            {
+                StretchDirection = StretchDirection.DownOnly,
+                Child = new TextBlock() { Text = label },
+            };
             this.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
             this.BorderBrush = new SolidColorBrush(Color.FromArgb(255, 255, 255, 255));
             this.HorizontalAlignment = HorizontalAlignment.Stretch;
             this.VerticalAlignment = VerticalAlignment.Stretch;
             this.BorderThickness = new Thickness(2);
             this.CornerRadius = new CornerRadius(8);
-            this.FontSize = 20;
+            this.FontSize = fontSize;
             SetTextColor(textColor);
         }
 
@@ -61,7 +73,7 @@ public class Program:Application
 
     public Program()
     {
-        //dark theme so menus, check boxes and number boxes match the dark background
+        //dark theme so menus and check boxes match the dark background
         this.RequestedTheme = ApplicationTheme.Dark;
     }
 
@@ -79,16 +91,16 @@ public class Program:Application
     {
         Resources.MergedDictionaries.Add(new XamlControlsResources());
 
-        //singers file + colour settings live in %AppData%\Singer_Selector
+        //singers file + settings live in %AppData%\KaraoQueue
         _selector = new Selector(Selector.DefaultFileName());
-        _settings = new ColorSettings(Path.Combine(Path.GetDirectoryName(_selector.FileName)!, "settings.txt"));
+        _settings = new AppSettings(Path.Combine(Path.GetDirectoryName(_selector.FileName)!, "settings.txt"));
 
         _window = new Window();
-        _window.Title = "Singer_Selector";
+        _window.Title = "KaraoQueue";
 
         AppWindow appWindow = _window.AppWindow;
-        appWindow.Title = "Singer_Selector";
-        SizeWindow(appWindow);
+        appWindow.Title = "KaraoQueue";
+        FitToDisplay(appWindow);
 
 
         //restrict sizing of window
@@ -101,121 +113,198 @@ public class Program:Application
         _window.Content = BuildUi();
         RefreshNames();
         _window.Activate();
+        SetWindowIcon(appWindow);       //after Activate: on Linux the window only exists from here
+
+        //twice a second, check whether the window was dragged onto a different screen
+        _lastPosition = appWindow.Position;
+        _displayWatcher = new DispatcherTimer() { Interval = TimeSpan.FromMilliseconds(500) };
+        _displayWatcher.Tick += (_, _) => CheckDisplay(appWindow);
+        _displayWatcher.Start();
     }
 
     /// <summary>
-    /// Size the window relative to the screen instead of a fixed pixel size, keeping the 800:900 shape.
-    /// Windows: 85% of the screen's usable height (taskbar excluded), so HD, 1440p and 4K all look the same.
-    /// Linux/macOS: 85% of the full screen height.
-    /// The layout inside is in a Viewbox, so everything scales with the window.
+    /// Title bar / taskbar icon. The icon files are copied next to the program when it's built
+    /// (Windows uses the .ico, Linux and macOS the .png).
     /// </summary>
-    private void SizeWindow(AppWindow appWindow)
+    private static void SetWindowIcon(AppWindow appWindow)
     {
-        double height = DesignHeight;
-
-        try
+        string icon = Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "icon.ico" : "icon.png");
+        if (File.Exists(icon))
         {
-            if (OperatingSystem.IsWindows() && GetWorkAreaHeight() is int screenHeight && screenHeight > 0)
-            {
-                height = screenHeight * ScreenFraction;
-            }
-            else
-            {
-                //Uno's build check says this isn't implemented, but the desktop runtime does return it
-#pragma warning disable Uno0001
-                ulong fullHeight = Windows.Graphics.Display.DisplayInformation.GetForCurrentView().ScreenHeightInRawPixels;
-#pragma warning restore Uno0001
-                if (fullHeight > 0)
-                {
-                    height = fullHeight * ScreenFraction;
-                }
-            }
+            appWindow.SetIcon(icon);
         }
-        catch (Exception)
-        {
-            //keep the 800x900 fallback
-        }
-
-        int width = (int)(height * DesignWidth / DesignHeight);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(width, (int)height));
     }
 
-    // ---------- Windows screen size ----------
+    // ---------- window size + display tracking ----------
 
-    //rectangle returned by SystemParametersInfo
+    /// <summary>
+    /// Usable height of the screen the window is on, in real pixels.
+    /// Windows: the screen minus the taskbar, and that area itself (so the window can be moved inside it).
+    /// Linux/macOS: 90% of the full screen height (no work area available); no area.
+    /// </summary>
+    private static (int height, Rect? workArea) GetDisplay(AppWindow appWindow)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            //the screen containing the middle of the window
+            PointInt32 pos = appWindow.Position;
+            SizeInt32 size = appWindow.Size;
+            IntPtr monitor = MonitorFromPoint(new WinPoint { X = pos.X + size.Width / 2, Y = pos.Y + size.Height / 2 },
+                                              MonitorDefaultToNearest);
+
+            MonitorInfo info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+            if (GetMonitorInfo(monitor, ref info))
+            {
+                return (info.WorkArea.Bottom - info.WorkArea.Top, info.WorkArea);
+            }
+        }
+
+        //Uno's build check says this isn't implemented, but the desktop runtime does return it
+#pragma warning disable Uno0001
+        ulong fullHeight = Windows.Graphics.Display.DisplayInformation.GetForCurrentView().ScreenHeightInRawPixels;
+#pragma warning restore Uno0001
+        return ((int)(fullHeight * FullScreenFraction), null);
+    }
+
+    /// <summary>
+    /// Make the window as tall as the usable screen, keeping the 800:900 shape.
+    /// The layout inside is in a Viewbox, so everything scales with the window.
+    /// </summary>
+    private void FitToDisplay(AppWindow appWindow)
+    {
+        (int height, Rect? workArea) = GetDisplay(appWindow);
+        if (height <= 0)
+        {
+            height = (int)DesignHeight;     //screen size unknown: use the design size
+        }
+
+        _sizedForHeight = height;
+        int width = (int)(height * DesignWidth / DesignHeight);
+        appWindow.Resize(new SizeInt32(width, height));
+
+        //Windows: line the window up with the top of the screen, fully on it
+        if (workArea is Rect area)
+        {
+            int x = Math.Clamp(appWindow.Position.X, area.Left, Math.Max(area.Left, area.Right - width));
+            appWindow.Move(new PointInt32(x, area.Top));
+        }
+    }
+
+    /// <summary>
+    /// Runs twice a second. Once the window has stopped moving, re-fit it if the screen it's on
+    /// has a different height than the one it was sized for (e.g. dragged from a 1080p to a 4K screen).
+    /// </summary>
+    private void CheckDisplay(AppWindow appWindow)
+    {
+        PointInt32 position = appWindow.Position;
+        bool stillMoving = position.X != _lastPosition.X || position.Y != _lastPosition.Y;
+        _lastPosition = position;
+        if (stillMoving) return;        //wait until the drag is finished
+
+        (int height, _) = GetDisplay(appWindow);
+        if (height > 0 && Math.Abs(height - _sizedForHeight) > 2)
+        {
+            FitToDisplay(appWindow);
+            _lastPosition = appWindow.Position;     //our own move isn't a drag
+        }
+    }
+
+    // ---------- Windows screen info ----------
+
+    //rectangle used by GetMonitorInfo
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { public int Left, Top, Right, Bottom; }
 
-    private const uint SpiGetWorkArea = 0x0030;
+    //point used by MonitorFromPoint
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WinPoint { public int X, Y; }
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SystemParametersInfo(uint action, uint param, ref Rect rect, uint winIni);
+    //screen size info: whole screen and the part not covered by the taskbar
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo { public int Size; public Rect Screen; public Rect WorkArea; public uint Flags; }
 
-    /// <summary>Height in pixels of the main screen minus the taskbar (Windows only).</summary>
-    private static int? GetWorkAreaHeight()
-    {
-        Rect rect = new Rect();
-        return SystemParametersInfo(SpiGetWorkArea, 0, ref rect, 0) ? rect.Bottom - rect.Top : null;
-    }
+    private const uint MonitorDefaultToNearest = 2;
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(WinPoint point, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+
+    // ---------- main screen ----------
 
     private UIElement BuildUi()
     {
         Grid g = new Grid()
         {
-            Padding = new Thickness(50),
-            RowSpacing = 10,
-            ColumnSpacing = 10,
+            Padding = new Thickness(12),
+            RowSpacing = 8,
+            ColumnSpacing = 8,
 
         };
 
+        //11 rows, 9 columns (each button is 3 columns wide)
         for (int x = 0; x < 11; x++)
         {
             g.RowDefinitions.Add(new RowDefinition{ Height = new GridLength(1, GridUnitType.Star) });
+        }
+        for (int x = 0; x < 9; x++)
+        {
             g.ColumnDefinitions.Add(new ColumnDefinition{ Width = new GridLength(1, GridUnitType.Star) });
         }
 
         List<UIElement> elements = new List<UIElement>();
 
-        TransparentButton addUser = new TransparentButton("Add Singer", _settings.ButtonText);
+        TransparentButton addUser = new TransparentButton("Add", _settings.ButtonText, _settings.ButtonFontSize);
         Grid.SetRow(addUser, 0);
-        Grid.SetColumn(addUser, 8);
+        Grid.SetColumn(addUser, 6);
         Grid.SetColumnSpan(addUser, 3);
-        addUser.Click += (s, e) => OpenAddMenu();
+        addUser.Click += (_, _) => OpenAddMenu();
         elements.Add(addUser);
 
-        TransparentButton removeUser = new TransparentButton("Remove Singer", _settings.ButtonText);
+        TransparentButton removeUser = new TransparentButton("Remove", _settings.ButtonText, _settings.ButtonFontSize);
         Grid.SetRow(removeUser, 0);
-        Grid.SetColumn(removeUser, 5);
+        Grid.SetColumn(removeUser, 3);
         Grid.SetColumnSpan(removeUser, 3);
-        removeUser.Click += (s, e) => OpenRemoveMenu();
+        removeUser.Click += (_, _) => OpenRemoveMenu();
         elements.Add(removeUser);
 
-        TransparentButton next = new TransparentButton("Next", _settings.ButtonText);
+        TransparentButton next = new TransparentButton("Next", _settings.ButtonText, _settings.ButtonFontSize);
         Grid.SetRow(next, 10);
-        Grid.SetColumn(next, 8);
+        Grid.SetColumn(next, 6);
         Grid.SetColumnSpan(next, 3);
-        next.Click += (s, e) => { _selector.Next(); RefreshNames(); };
+        next.Click += (_, _) => { _selector.Next(); RefreshNames(); };
         elements.Add(next);
 
-        TransparentButton prev = new TransparentButton("Previous", _settings.ButtonText);
+        TransparentButton prev = new TransparentButton("Previous", _settings.ButtonText, _settings.ButtonFontSize);
         Grid.SetRow(prev, 10);
-        Grid.SetColumn(prev, 5);
+        Grid.SetColumn(prev, 3);
         Grid.SetColumnSpan(prev, 3);
-        prev.Click += (s, e) => { _selector.Previous(); RefreshNames(); };
+        prev.Click += (_, _) => { _selector.Previous(); RefreshNames(); };
         elements.Add(prev);
 
-        TransparentButton editFile = new TransparentButton("Edit File", _settings.ButtonText);
-        Grid.SetRow(editFile, 10);
-        Grid.SetColumn(editFile, 0);
-        Grid.SetColumnSpan(editFile, 3);
-        editFile.Click += (s, e) => OpenFile();
-        elements.Add(editFile);
-
-        TransparentButton options = new TransparentButton("Options", _settings.ButtonText);
+        TransparentButton options = new TransparentButton("Options", _settings.ButtonText, _settings.ButtonFontSize);
         Grid.SetRow(options, 0);
         Grid.SetColumn(options, 0);
         Grid.SetColumnSpan(options, 3);
-        options.Click += (s, e) => OpenOptionsMenu();
+        //drop-down list: Settings (colours, text sizes, Shuffle) and Edit File (singer list in the text editor)
+        MenuFlyoutItem settingsItem = new MenuFlyoutItem() { Text = "Settings" };
+        settingsItem.Click += (_, _) => OpenOptionsMenu();
+        MenuFlyoutItem editFileItem = new MenuFlyoutItem() { Text = "Edit File" };
+        editFileItem.Click += (_, _) => OpenFile();
+        MenuFlyout optionsList = new MenuFlyout()
+        {
+            Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
+            Items = { settingsItem, editFileItem },
+        };
+        //the drop-down is drawn outside the scaled layout, so scale its text the same way the window is scaled
+        optionsList.Opening += (_, _) =>
+        {
+            double scale = _window?.Content is FrameworkElement root && root.ActualHeight > 0 ? root.ActualHeight / DesignHeight : 1;
+            settingsItem.FontSize = 22 * scale;
+            editFileItem.FontSize = 22 * scale;
+        };
+        options.Flyout = optionsList;
         elements.Add(options);
 
         //scrollable pane with the singing order (rows 1-9, full width)
@@ -231,10 +320,10 @@ public class Program:Application
         Grid.SetRow(namesPane, 1);
         Grid.SetRowSpan(namesPane, 9);
         Grid.SetColumn(namesPane, 0);
-        Grid.SetColumnSpan(namesPane, 11);
+        Grid.SetColumnSpan(namesPane, 9);
         elements.Add(namesPane);
 
-        //remember the buttons so their text colour can be changed from Options
+        //remember the buttons so their text colour and size can be changed from Options
         _buttons.AddRange(elements.OfType<TransparentButton>());
 
         AddAllElements(g, elements);
@@ -285,9 +374,10 @@ public class Program:Application
         {
             _namesPanel.Children.Add(new TextBlock()
             {
-                Text = "No singers yet. Click \"Add Singer\" to start.",
+                Text = "No singers yet. Click \"Add\" to start.",
                 Foreground = new SolidColorBrush(_settings.NameText),
-                FontSize = 22,
+                FontSize = _settings.NameFontSize,
+                TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.7,
             });
             return;
@@ -300,9 +390,9 @@ public class Program:Application
 
             TextBlock name = new TextBlock()
             {
-                Text = $"{i + 1}. {order[i]}" + (isWaiting ? "   (next round)" : ""),
+                Text = $"{i + 1}.\t{order[i]}" + (isWaiting ? "   (next round)" : ""),
                 Foreground = new SolidColorBrush(_settings.NameText),
-                FontSize = 26,
+                FontSize = _settings.NameFontSize,
                 FontWeight = isCurrent ? FontWeights.Bold : FontWeights.Normal,
                 FontStyle = isWaiting ? FontStyle.Italic : FontStyle.Normal,
                 Opacity = isWaiting ? 0.6 : 1,          //late singers are dimmed
@@ -316,12 +406,6 @@ public class Program:Application
                 Background = new SolidColorBrush(isCurrent ? _settings.Highlight : Colors.Transparent),
             };
 
-            if (isCurrent)
-            {
-                //once drawn, scroll the pane so the current singer is visible
-                row.Loaded += (s, e) => row.StartBringIntoView();
-            }
-
             _namesPanel.Children.Add(row);
         }
     }
@@ -330,6 +414,9 @@ public class Program:Application
 
     /// <summary>
     /// Show a menu on top of the main screen (inside the scaled stage, so it scales too).
+    /// It sits against the right edge of the window and is only as tall as its content: title at the top,
+    /// content in the middle and the buttons side by side at the bottom. Once it reaches the window's height,
+    /// the content (e.g. a long list of names) scrolls.
     /// Each button runs its action and then closes the menu.
     /// </summary>
     private void ShowMenu(string title, UIElement body, params (string label, Action action)[] actions)
@@ -337,7 +424,12 @@ public class Program:Application
         //dark see-through layer that blocks clicks on the screen behind
         Grid overlay = new Grid() { Background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)) };
 
-        StackPanel content = new StackPanel() { Spacing = 16 };
+        //rows: title, content (as tall as it needs, up to the space left), buttons
+        Grid content = new Grid() { RowSpacing = 16 };
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        content.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
         content.Children.Add(new TextBlock()
         {
             Text = title,
@@ -345,17 +437,19 @@ public class Program:Application
             FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(Colors.White),
         });
+
+        Grid.SetRow((FrameworkElement)body, 1);
         content.Children.Add(body);
 
-        //button row, all buttons the same width
-        Grid buttonRow = new Grid() { ColumnSpacing = 10, Height = 50 };
+        //buttons in one row, equal widths
+        Grid buttonRow = new Grid() { ColumnSpacing = 8 };
         for (int i = 0; i < actions.Length; i++)
         {
             buttonRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
             (string label, Action action) = actions[i];
-            TransparentButton button = new TransparentButton(label, _settings.ButtonText);
-            button.Click += (s, e) =>
+            TransparentButton button = new TransparentButton(label, _settings.ButtonText, 18) { Height = 40 };
+            button.Click += (_, _) =>
             {
                 _stage.Children.Remove(overlay);
                 action();
@@ -363,14 +457,16 @@ public class Program:Application
             Grid.SetColumn(button, i);
             buttonRow.Children.Add(button);
         }
+        Grid.SetRow(buttonRow, 2);
         content.Children.Add(buttonRow);
 
         overlay.Children.Add(new Border()
         {
-            Width = 560,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            Padding = new Thickness(24),
+            MinWidth = 320,
+            MaxWidth = DesignWidth,                             //never wider than the window
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,          //grows downwards; can't be taller than the window
+            Padding = new Thickness(20),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(2),
             BorderBrush = new SolidColorBrush(Colors.White),
@@ -393,6 +489,7 @@ public class Program:Application
             {
                 Text = emptyMessage,
                 FontSize = 20,
+                MaxWidth = 400,
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = new SolidColorBrush(Colors.White),
             };
@@ -403,7 +500,7 @@ public class Program:Application
         List<CheckBox> boxes = new List<CheckBox>();
 
         CheckBox selectAll = new CheckBox() { Content = "Select all", FontSize = 20, FontWeight = FontWeights.Bold };
-        selectAll.Click += (s, e) =>
+        selectAll.Click += (_, _) =>
         {
             foreach (CheckBox box in boxes)
             {
@@ -419,24 +516,43 @@ public class Program:Application
             list.Children.Add(box);
         }
 
-        ScrollViewer scroll = new ScrollViewer() { Content = list, MaxHeight = 450 };
+        ScrollViewer scroll = new ScrollViewer() { Content = list };
         return (scroll, () => boxes.Where(b => b.IsChecked == true).Select(b => (string)b.Content).ToList());
     }
 
-    /// <summary>Add Singer: pick saved singers who aren't in the rotation yet.</summary>
+    /// <summary>
+    /// Add: pick saved singers who aren't in the rotation yet (alphabetical).
+    /// The first add of the night shuffles automatically. After that, new singers go in after the
+    /// current singer; a Shuffle button is only there if it's turned on in Options.
+    /// </summary>
     private void OpenAddMenu()
     {
         (UIElement body, Func<List<string>> getChecked) = BuildCheckList(
             _selector.Absent(),
-            "Everyone in the file is already added. Use \"Edit File\" to add new names.");
+            "Everyone in the file is already added. Use Options → Edit File to add new names.");
 
-        ShowMenu("Add Singer", body,
-            ("Add", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
-            ("Shuffle", () => { _selector.InsertSingers(getChecked()); _selector.Shuffle(); RefreshNames(); }),
-            ("Cancel", () => { }));
+        if (_selector.Order.Count == 0)
+        {
+            ShowMenu("Add Singer", body,
+                ("Add (auto shuffle)", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
+                ("Cancel", () => { }));
+        }
+        else if (_settings.ShowShuffle)
+        {
+            ShowMenu("Add Singer", body,
+                ("Add", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
+                ("Shuffle", () => { _selector.InsertSingers(getChecked()); _selector.Shuffle(); RefreshNames(); }),
+                ("Cancel", () => { }));
+        }
+        else
+        {
+            ShowMenu("Add Singer", body,
+                ("Add", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
+                ("Cancel", () => { }));
+        }
     }
 
-    /// <summary>Remove Singer: pick singers to take out of the rotation.</summary>
+    /// <summary>Remove: pick singers to take out of the rotation (alphabetical).</summary>
     private void OpenRemoveMenu()
     {
         (UIElement body, Func<List<string>> getChecked) = BuildCheckList(
@@ -445,51 +561,54 @@ public class Program:Application
 
         ShowMenu("Remove Singer", body,
             ("Remove", () => { _selector.RemoveSingers(getChecked()); RefreshNames(); }),
-            ("Shuffle", () => { _selector.RemoveSingers(getChecked()); _selector.Shuffle(); RefreshNames(); }),
             ("Cancel", () => { }));
     }
 
-    /// <summary>Options: R, G, B boxes (0-255) for each editable colour.</summary>
+    /// <summary>Options: R, G, B boxes (0-255) for each colour, + / - for the text sizes, Shuffle on/off.</summary>
     private void OpenOptionsMenu()
     {
         Grid form = new Grid() { RowSpacing = 10, ColumnSpacing = 10 };
-        form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+        form.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         for (int c = 0; c < 3; c++)
         {
             form.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         }
 
+        //white text for labels in the form
+        TextBlock Label(string text, int row, int column)
+        {
+            TextBlock label = new TextBlock()
+            {
+                Text = text,
+                FontSize = 20,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = new SolidColorBrush(Colors.White),
+            };
+            Grid.SetRow(label, row);
+            Grid.SetColumn(label, column);
+            form.Children.Add(label);
+            return label;
+        }
+
+        int AddRow()
+        {
+            form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            return form.RowDefinitions.Count - 1;
+        }
+
         //header row: R G B
-        form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        int headerRow = AddRow();
         string[] headers = { "R", "G", "B" };
         for (int c = 0; c < 3; c++)
         {
-            TextBlock header = new TextBlock()
-            {
-                Text = headers[c],
-                FontSize = 20,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Foreground = new SolidColorBrush(Colors.White),
-            };
-            Grid.SetColumn(header, c + 1);
-            form.Children.Add(header);
+            Label(headers[c], headerRow, c + 1).HorizontalAlignment = HorizontalAlignment.Center;
         }
 
         //one row per colour; returns a function that reads the boxes back as a colour
         Func<byte, Color> AddColorRow(string label, Color current)
         {
-            int row = form.RowDefinitions.Count;
-            form.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            TextBlock text = new TextBlock()
-            {
-                Text = label,
-                FontSize = 20,
-                VerticalAlignment = VerticalAlignment.Center,
-                Foreground = new SolidColorBrush(Colors.White),
-            };
-            Grid.SetRow(text, row);
-            form.Children.Add(text);
+            int row = AddRow();
+            Label(label, row, 0);
 
             byte[] values = { current.R, current.G, current.B };
             NumberBox[] boxes = new NumberBox[3];
@@ -513,33 +632,86 @@ public class Program:Application
             return alpha => Color.FromArgb(alpha, ReadBox(boxes[0]), ReadBox(boxes[1]), ReadBox(boxes[2]));
         }
 
+        //one row per text size: [-] size [+], stopping at the limits; returns a function that reads the size
+        Func<int> AddSizeRow(string label, int current, int min, int max)
+        {
+            int row = AddRow();
+            Label(label, row, 0);
+
+            int size = current;
+            TransparentButton minus = new TransparentButton("−", _settings.ButtonText, 24) { Height = 40 };
+            TransparentButton plus = new TransparentButton("+", _settings.ButtonText, 24) { Height = 40 };
+            TextBlock value = Label("", row, 2);
+            value.HorizontalAlignment = HorizontalAlignment.Center;
+
+            void Show()
+            {
+                value.Text = size.ToString();
+                minus.IsEnabled = size > min;
+                plus.IsEnabled = size < max;
+            }
+
+            minus.Click += (_, _) => { size = Math.Max(min, size - AppSettings.FontSizeStep); Show(); };
+            plus.Click += (_, _) => { size = Math.Min(max, size + AppSettings.FontSizeStep); Show(); };
+            Show();
+
+            Grid.SetRow(minus, row);
+            Grid.SetColumn(minus, 1);
+            Grid.SetRow(plus, row);
+            Grid.SetColumn(plus, 3);
+            form.Children.Add(minus);
+            form.Children.Add(plus);
+
+            return () => size;
+        }
+
         Func<byte, Color> buttonText = AddColorRow("Button text", _settings.ButtonText);
         Func<byte, Color> gradient   = AddColorRow("Gradient", _settings.Gradient);
         Func<byte, Color> highlight  = AddColorRow("Current singer", _settings.Highlight);
         Func<byte, Color> nameText   = AddColorRow("Name text", _settings.NameText);
 
-        ShowMenu("Options", form,
+        Func<int> buttonSize = AddSizeRow("Button text size", _settings.ButtonFontSize,
+                                          AppSettings.MinButtonFontSize, AppSettings.MaxButtonFontSize);
+        Func<int> nameSize   = AddSizeRow("Name text size", _settings.NameFontSize,
+                                          AppSettings.MinNameFontSize, AppSettings.MaxNameFontSize);
+
+        //Shuffle button in the Add menu: on/off
+        int shuffleRow = AddRow();
+        Label("Shuffle in Add menu", shuffleRow, 0);
+        CheckBox showShuffle = new CheckBox() { IsChecked = _settings.ShowShuffle };
+        Grid.SetRow(showShuffle, shuffleRow);
+        Grid.SetColumn(showShuffle, 1);
+        form.Children.Add(showShuffle);
+
+        //the form keeps its natural height at the top of the menu
+        form.VerticalAlignment = VerticalAlignment.Top;
+
+        ShowMenu("Settings", form,
             ("Apply", () =>
             {
-                _settings.ButtonText = buttonText(ColorSettings.ButtonTextAlpha);
-                _settings.Gradient   = gradient(ColorSettings.GradientAlpha);
-                _settings.Highlight  = highlight(ColorSettings.HighlightAlpha);
-                _settings.NameText   = nameText(ColorSettings.NameTextAlpha);
+                _settings.ButtonText     = buttonText(AppSettings.ButtonTextAlpha);
+                _settings.Gradient       = gradient(AppSettings.GradientAlpha);
+                _settings.Highlight      = highlight(AppSettings.HighlightAlpha);
+                _settings.NameText       = nameText(AppSettings.NameTextAlpha);
+                _settings.ButtonFontSize = buttonSize();
+                _settings.NameFontSize   = nameSize();
+                _settings.ShowShuffle    = showShuffle.IsChecked == true;
                 _settings.Save();
-                ApplyColors();
+                ApplySettings();
             }),
             ("Cancel", () => { }));
     }
 
-    /// <summary>Push the colours from settings onto the screen.</summary>
-    private void ApplyColors()
+    /// <summary>Push the colours and text sizes from settings onto the screen.</summary>
+    private void ApplySettings()
     {
         foreach (TransparentButton button in _buttons)
         {
             button.SetTextColor(_settings.ButtonText);
+            button.FontSize = _settings.ButtonFontSize;
         }
         _gradientColor.Color = _settings.Gradient;
-        RefreshNames();     //redraws names with the new text + highlight colours
+        RefreshNames();     //redraws names with the new text colour, size and highlight
     }
 
     // ---------- Edit File ----------
@@ -557,6 +729,7 @@ public class Program:Application
             {
                 Text = $"Couldn't open the file:\n{_selector.FileName}\n\n{ex.Message}",
                 FontSize = 18,
+                MaxWidth = 500,
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = new SolidColorBrush(Colors.White),
             };

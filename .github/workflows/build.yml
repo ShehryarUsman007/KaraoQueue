@@ -1,4 +1,4 @@
-# Builds Karaoke Shuffler for Windows (installer), Linux (deb, rpm, AppImage) and macOS (zipped .app),
+# Builds KaraoQueue for Windows (installer), Linux (deb, rpm, AppImage) and macOS (zipped .app),
 # all from one Ubuntu machine with packaging/build.sh.
 # Tags starting with "v" (for example v1.0.0) attach every file to one draft GitHub release.
 name: Build
@@ -45,7 +45,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: karaoke-shuffler
+          name: karaoqueue
           path: |
             dist/*.exe
             dist/*.deb
@@ -76,7 +76,7 @@ jobs:
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4
         with:
-          name: karaoke-shuffler
+          name: karaoqueue
           path: packages
       - name: Draft release
         # an existing draft for this tag gets its files replaced; a published release is left alone
@@ -92,7 +92,7 @@ jobs:
             gh release upload "$TAG" "${files[@]}" --clobber
           elif grep -q "release not found" err.txt; then
             echo "Creating the draft for $TAG"
-            gh release create "$TAG" "${files[@]}" --draft --verify-tag --title "Karaoke Shuffler $TAG" --notes-file packaging/release-notes.md
+            gh release create "$TAG" "${files[@]}" --draft --verify-tag --title "KaraoQueue $TAG" --notes-file packaging/release-notes.md
           else
             cat err.txt
             exit 1
