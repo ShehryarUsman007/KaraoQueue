@@ -47,7 +47,7 @@ It runs on Windows, Linux and macOS.
 
 `packaging/build.sh` builds the Windows installer, .deb, .rpm, AppImage and macOS zips into `dist/`. It needs `makensis` (NSIS), `rpmbuild`, `dpkg-deb`, `rsvg-convert` and `zip`.
 
-GitHub Actions runs the same script on every push. Pushing a tag like `v1.1.0` (matching `<Version>` in `Singer_Selector.csproj`) publishes a release with all the files attached.
+GitHub Actions runs the same script on every push. Pushing a tag like `v1.2.0` (matching `<Version>` in `Singer_Selector.csproj`) publishes a release with all the files attached.
 
 ## Code layout
 
