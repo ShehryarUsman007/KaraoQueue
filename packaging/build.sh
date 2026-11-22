@@ -36,6 +36,15 @@ done
 # tracing plugin that needs liblttng (not on most systems, not needed)
 rm -f "$DIST/app-linux-x64/libcoreclrtraceptprovider.so"
 
+# publish can leave files as rwxr--r--, so other users (anyone but the installer/root) couldn't run the app.
+# Normal permissions: folders and programs/native libraries 755, everything else 644.
+for rid in win-x64 linux-x64 osx-arm64 osx-x64; do
+    dir="$DIST/app-$rid"
+    find "$dir" -type d -exec chmod 755 {} +
+    find "$dir" -type f -exec chmod 644 {} +
+    find "$dir" -type f \( -name '*.so' -o -name '*.dylib' -o -name 'Singer_Selector' -o -name 'createdump' \) -exec chmod 755 {} +
+done
+
 # ---------- 2. Windows installer ----------
 (cd "$PKG" && makensis -V2 -DVERSION="$VERSION" -DSRCDIR="$DIST/app-win-x64" \
     -DOUTFILE="$DIST/KaraokeShuffler-$VERSION-Setup.exe" installer.nsi)
