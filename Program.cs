@@ -425,7 +425,7 @@ public class Program:Application
         settingsItem.Click += (_, _) => OpenOptionsMenu();
         MenuFlyoutItem editFileItem = new MenuFlyoutItem() { Text = "Edit File" };
         editFileItem.Click += (_, _) => OpenFile();
-        MenuFlyoutItem imageItem = new MenuFlyoutItem() { Text = $"Add/Change Image (up to {LogoWidth}×{LogoHeight} px)" };
+        MenuFlyoutItem imageItem = new MenuFlyoutItem() { Text = $"Add/Change Image (max {LogoWidth}×{LogoHeight} px)" };
         imageItem.Click += (_, _) => ChangeImage();
         MenuFlyoutItem removeImageItem = new MenuFlyoutItem() { Text = "Remove Image" };
         removeImageItem.Click += (_, _) => RemoveImage();
@@ -554,21 +554,12 @@ public class Program:Application
 
     /// <summary>
     /// Show a menu on top of the main screen (inside the scaled stage, so it scales too).
-    /// It sits against the right edge of the window and is only as tall as its content: title at the top,
-    /// content in the middle and the buttons side by side at the bottom. Once it reaches the window's height,
-    /// the content (e.g. a long list of names) scrolls.
+    /// It spans the top row of buttons (left edge = Options button, right edge = Add button, top = their top)
+    /// and is only as tall as its content: title at the top, content in the middle and the buttons side by side
+    /// at the bottom. Once it reaches the window's height, the content (e.g. a long list of names) scrolls.
     /// Each button runs its action and then closes the menu.
     /// </summary>
     private void ShowMenu(string title, UIElement body, params (string label, Action action)[] actions)
-    {
-        ShowMenu(title, body, new Thickness(0), actions);
-    }
-
-    /// <summary>
-    /// Same as above, with a gap around the menu (e.g. to line it up with a button: the Add and Remove
-    /// menus use the window padding so their top and right edge match the Add button's).
-    /// </summary>
-    private void ShowMenu(string title, UIElement body, Thickness margin, params (string label, Action action)[] actions)
     {
         //dark see-through layer that blocks clicks on the screen behind
         Grid overlay = new Grid() { Background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)) };
@@ -611,11 +602,9 @@ public class Program:Application
 
         overlay.Children.Add(new Border()
         {
-            MinWidth = 320,
-            MaxWidth = DesignWidth,                             //never wider than the window
-            HorizontalAlignment = HorizontalAlignment.Right,
+            HorizontalAlignment = HorizontalAlignment.Stretch,  //from the Options button's left edge to the Add button's right edge
             VerticalAlignment = VerticalAlignment.Top,          //grows downwards; can't be taller than the window
-            Margin = margin,
+            Margin = new Thickness(LayoutPadding),              //same gap as the buttons (bottom gap keeps a full-height menu inside the window)
             Padding = new Thickness(20),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(2),
@@ -626,9 +615,6 @@ public class Program:Application
 
         _stage.Children.Add(overlay);
     }
-
-    //Add / Remove menus: top and right edge line up with the Add button (bottom gap keeps a full-height menu inside the window)
-    private static readonly Thickness AddButtonEdges = new Thickness(0, LayoutPadding, LayoutPadding, LayoutPadding);
 
     /// <summary>
     /// Scrollable list of check boxes (with "Select all" on top).
@@ -686,20 +672,20 @@ public class Program:Application
 
         if (_selector.Order.Count == 0)
         {
-            ShowMenu("Add Singer", body, AddButtonEdges,
+            ShowMenu("Add Singer", body,
                 ("Add (auto shuffle)", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
                 ("Cancel", () => { }));
         }
         else if (_settings.ShowShuffle)
         {
-            ShowMenu("Add Singer", body, AddButtonEdges,
+            ShowMenu("Add Singer", body,
                 ("Add", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
                 ("Shuffle", () => { _selector.InsertSingers(getChecked()); _selector.Shuffle(); RefreshNames(); }),
                 ("Cancel", () => { }));
         }
         else
         {
-            ShowMenu("Add Singer", body, AddButtonEdges,
+            ShowMenu("Add Singer", body,
                 ("Add", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
                 ("Cancel", () => { }));
         }
@@ -712,7 +698,7 @@ public class Program:Application
             _selector.Present(),
             "Nobody has been added yet.");
 
-        ShowMenu("Remove Singer", body, AddButtonEdges,
+        ShowMenu("Remove Singer", body,
             ("Remove", () => { _selector.RemoveSingers(getChecked()); RefreshNames(); }),
             ("Cancel", () => { }));
     }

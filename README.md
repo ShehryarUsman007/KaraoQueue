@@ -22,7 +22,7 @@ So far it has been tested on **Fedora 45 Workstation** and **Windows 11**. The o
 - **Add / Remove** open an alphabetical checklist of names. The first add of the night shuffles automatically; a **Shuffle** button for reshuffling later can be turned on in Options.
 - **Options → Settings** lets you set the RGB colours of the button text, background gradient, highlight and names, make the button and name text bigger or smaller, and turn the Shuffle button on or off.
 - **Options → Edit File** opens the saved singer list (one name per line) in your default text editor.
-- **Options → Add/Change Image** picks a .png or .jpg of up to **400 × 225 pixels** (e.g. your group's logo) to show in the bottom-left corner (smaller pictures keep their size, with see-through space around them). Picking a new one replaces the old one; **Options → Remove Image** takes it away.
+- **Options → Add/Change Image** picks a .png or .jpg of max **400 × 225 pixels** (e.g. your group's logo) to show in the bottom-left corner (smaller pictures keep their size, with see-through space around them). Picking a new one replaces the old one; **Options → Remove Image** takes it away.
 - The window is as tall as the screen and everything in it scales, so it looks the same on HD, 1440p or 4K displays. Dragging it onto a screen with a different resolution resizes it to fit, and it reopens where it was last closed.
 
 ## Where the data is stored
