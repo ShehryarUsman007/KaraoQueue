@@ -74,7 +74,7 @@ Conflicts: karaoke-shuffler
 Replaces: karaoke-shuffler
 Section: sound
 Priority: optional
-Homepage: https://github.com/ShehryarUsman007/Karaoke-Shuffler
+Homepage: https://github.com/ShehryarUsman007/KaraoQueue
 Description: Shuffle and track the karaoke singer rotation
  A very basic karaoke singer rotation app, made for a karaoke group in
  Windsor, Ontario. Shuffles the singers, highlights whose turn it is and

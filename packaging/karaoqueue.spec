@@ -7,7 +7,7 @@ Version:        %{_version}
 Release:        1
 Summary:        Shuffle and track the karaoke singer rotation
 License:        Apache-2.0
-URL:            https://github.com/ShehryarUsman007/Karaoke-Shuffler
+URL:            https://github.com/ShehryarUsman007/KaraoQueue
 ExclusiveArch:  x86_64
 
 # version 1.0.0 was called karaoke-shuffler: installing this one replaces it

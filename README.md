@@ -4,7 +4,7 @@ A **very basic** karaoke singer rotation app. It was made at the request of a ka
 
 ## Download
 
-Get the latest version from the [Releases page](https://github.com/ShehryarUsman007/Karaoke-Shuffler/releases/latest). Nothing else needs to be installed: .NET is bundled.
+Get the latest version from the [Releases page](https://github.com/ShehryarUsman007/KaraoQueue/releases/latest). Nothing else needs to be installed: .NET is bundled.
 
 - **Windows:** `…-Setup.exe` (installer, no admin rights needed)
 - **Ubuntu / Debian:** `.deb`
