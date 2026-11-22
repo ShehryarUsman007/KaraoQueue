@@ -1,0 +1,99 @@
+# Builds Karaoke Shuffler for Windows (installer), Linux (deb, rpm, AppImage) and macOS (zipped .app),
+# all from one Ubuntu machine with packaging/build.sh.
+# Tags starting with "v" (for example v1.0.0) attach every file to one draft GitHub release.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["README.md", "LICENSE"]
+  pull_request:
+    paths-ignore: ["README.md", "LICENSE"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Tag matches the version in Singer_Selector.csproj
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(grep -oP '(?<=<Version>)[^<]+' Singer_Selector.csproj)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version (expected v$version)"
+            exit 1
+          fi
+
+      - name: Packaging tools
+        # nsis = Windows installer, rpm = rpmbuild, librsvg2-bin = icon conversion (dpkg-deb and zip are already there)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis rpm librsvg2-bin zip
+
+      - name: Build all packages
+        run: packaging/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: karaoke-shuffler
+          path: |
+            dist/*.exe
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
+            dist/*.zip
+          if-no-files-found: error
+
+  release:
+    # One draft release per tag with every package; publish it by hand on GitHub.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # a re-run for the same tag waits instead of making a second draft
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packaging/release-notes.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: karaoke-shuffler
+          path: packages
+      - name: Draft release
+        # an existing draft for this tag gets its files replaced; a published release is left alone
+        run: |
+          shopt -s failglob
+          files=(packages/*)
+          if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>err.txt); then
+            if [ "$draft" != true ]; then
+              echo "::error::$TAG is already published; it is left as it is"
+              exit 1
+            fi
+            echo "Updating the existing draft for $TAG"
+            gh release upload "$TAG" "${files[@]}" --clobber
+          elif grep -q "release not found" err.txt; then
+            echo "Creating the draft for $TAG"
+            gh release create "$TAG" "${files[@]}" --draft --verify-tag --title "Karaoke Shuffler $TAG" --notes-file packaging/release-notes.md
+          else
+            cat err.txt
+            exit 1
+          fi

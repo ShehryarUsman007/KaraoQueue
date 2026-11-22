@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace Singer_Selector;
 
 /// <summary>
@@ -156,11 +158,8 @@ public class Selector
     /// </summary>
     public void Shuffle()
     {
-        for (int i = _currentRound.Count - 1; i > 0; i--)
-        {
-            int j = Rng.Next(i + 1);     //random index from 0 to i (inclusive)
-            (_currentRound[i], _currentRound[j]) = (_currentRound[j], _currentRound[i]);
-        }
+        //Random.Shuffle is .NET's built-in Fisher–Yates; AsSpan lets it shuffle the list in place
+        Rng.Shuffle(CollectionsMarshal.AsSpan(_currentRound));
 
         _nextRound.Clear();
         _index = _currentRound.Count > 0 ? 0 : -1;

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Karaoke Shuffler
+Comment=Shuffle and track the karaoke singer rotation
+Exec=karaoke-shuffler
+Icon=karaoke-shuffler
+Terminal=false
+Categories=AudioVideo;Audio;

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- background: same black-to-red gradient as the app -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.2" stop-color="#1a1a1a"/>
+      <stop offset="1" stop-color="#ff0000"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bg)" stroke="#ffffff" stroke-width="8"/>
+  <!-- microphone in the app's yellow -->
+  <g fill="none" stroke="#f7ec08" stroke-width="14" stroke-linecap="round">
+    <path d="M80 118 a48 48 0 0 0 96 0"/>
+    <line x1="128" y1="166" x2="128" y2="200"/>
+    <line x1="98" y1="204" x2="158" y2="204"/>
+  </g>
+  <rect x="102" y="46" width="52" height="96" rx="26" fill="#f7ec08"/>
+</svg>

@@ -6,5 +6,13 @@
         <UnoFeatures>Skia</UnoFeatures>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+
+        <!-- app info (shown in the Windows file properties and used by the installers) -->
+        <Product>Karaoke Shuffler</Product>
+        <Version>1.0.0</Version>
+        <ApplicationIcon>packaging\icon.ico</ApplicationIcon>
+
+        <!-- installer scripts and build output aren't part of the app itself -->
+        <DefaultItemExcludes>$(DefaultItemExcludes);packaging/**;dist/**</DefaultItemExcludes>
     </PropertyGroup>
 </Project>
