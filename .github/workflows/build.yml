@@ -1,6 +1,6 @@
 # Builds KaraoQueue for Windows (installer), Linux (deb, rpm, AppImage) and macOS (zipped .app),
 # all from one Ubuntu machine with packaging/build.sh.
-# Tags starting with "v" (for example v1.0.0) attach every file to one draft GitHub release.
+# Tags starting with "v" (for example v1.0.0) publish a GitHub release with every file attached.
 name: Build
 
 on:
@@ -55,13 +55,13 @@ jobs:
           if-no-files-found: error
 
   release:
-    # One draft release per tag with every package; publish it by hand on GitHub.
+    # One published release per tag with every package, once the build has succeeded.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    # a re-run for the same tag waits instead of making a second draft
+    # a re-run for the same tag waits instead of making a second release
     concurrency:
       group: release-${{ github.ref_name }}
       cancel-in-progress: false
@@ -78,8 +78,9 @@ jobs:
         with:
           name: karaoqueue
           path: packages
-      - name: Draft release
-        # an existing draft for this tag gets its files replaced; a published release is left alone
+      - name: Publish release
+        # a draft for this tag (e.g. from an earlier run) gets its files replaced and is published;
+        # an already published release is left alone
         run: |
           shopt -s failglob
           files=(packages/*)
@@ -88,11 +89,12 @@ jobs:
               echo "::error::$TAG is already published; it is left as it is"
               exit 1
             fi
-            echo "Updating the existing draft for $TAG"
+            echo "Updating and publishing the existing draft for $TAG"
             gh release upload "$TAG" "${files[@]}" --clobber
+            gh release edit "$TAG" --draft=false --latest
           elif grep -q "release not found" err.txt; then
-            echo "Creating the draft for $TAG"
-            gh release create "$TAG" "${files[@]}" --draft --verify-tag --title "KaraoQueue $TAG" --notes-file packaging/release-notes.md
+            echo "Publishing $TAG"
+            gh release create "$TAG" "${files[@]}" --latest --verify-tag --title "KaraoQueue $TAG" --notes-file packaging/release-notes.md
           else
             cat err.txt
             exit 1
