@@ -1,0 +1,13 @@
+# build output
+bin/
+obj/
+
+# IDE / tool settings
+.idea/
+.junie/
+.vs/
+*.user
+
+# personal data (the app keeps these in %AppData%, but never commit them)
+singers.txt
+settings.txt
