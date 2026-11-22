@@ -20,6 +20,7 @@ Get the latest version from the [Releases page](https://github.com/ShehryarUsman
 - **Add / Remove** open an alphabetical checklist of names. The first add of the night shuffles automatically; a **Shuffle** button for reshuffling later can be turned on in Options.
 - **Options → Settings** lets you set the RGB colours of the button text, background gradient, highlight and names, make the button and name text bigger or smaller, and turn the Shuffle button on or off.
 - **Options → Edit File** opens the saved singer list (one name per line) in your default text editor.
+- **Options → Add/Change Image** picks a .png or .jpg of up to **400 × 225 pixels** (e.g. your group's logo) to show in the bottom-left corner (smaller pictures keep their size, with see-through space around them). Picking a new one replaces the old one; **Options → Remove Image** takes it away.
 - The window is as tall as the screen and everything in it scales, so it looks the same on HD, 1440p or 4K displays. Dragging it onto a screen with a different resolution resizes it to fit.
 
 ## Where the data is stored
@@ -27,6 +28,7 @@ Get the latest version from the [Releases page](https://github.com/ShehryarUsman
 | File | Contents |
 |---|---|
 | `%AppData%\KaraoQueue\singers.txt` | saved singer names, one per line |
+| `%AppData%\KaraoQueue\logo.png` | the picture chosen with Add/Change Image (always saved as PNG) |
 | `%AppData%\KaraoQueue\settings.txt` | colours, text sizes and the Shuffle setting chosen in Options → Settings |
 
 (On Linux/macOS this is `~/.config/KaraoQueue/`. Version 1.0.0, then called Karaoke Shuffler, used a `Singer_Selector` folder; KaraoQueue copies it over on first start.)

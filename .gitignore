@@ -11,6 +11,7 @@ obj/
 # personal data (the app keeps these in %AppData%, but never commit them)
 singers.txt
 settings.txt
+logo.png
 
 # packaged installers (attach to GitHub releases instead)
 dist/

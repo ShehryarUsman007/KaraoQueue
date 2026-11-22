@@ -8,7 +8,11 @@ using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media.Imaging;
+using SkiaSharp;
 using Uno.UI.Hosting;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 
 namespace  Singer_Selector;
 
@@ -21,6 +25,9 @@ public class Program:Application
     private const double DesignWidth = 440;
     private const double DesignHeight = 900;
 
+    //space between the window edge and the buttons / names pane
+    private const double LayoutPadding = 12;
+
     //Linux/macOS only report the full screen height, so leave room for the top bar / menu bar, dock and title bar
     private const double FullScreenFraction = 0.9;
 
@@ -32,6 +39,14 @@ public class Program:Application
     private GradientStop _gradientColor = null!; //the editable (bottom) colour of the background
     private StackPanel _namesPanel = null!;      //the list of names inside the scrollable pane
     private readonly List<TransparentButton> _buttons = new List<TransparentButton>();
+
+    //picture in the bottom-left corner, chosen with Options → Add/Change Image
+    //largest picture size in pixels: about a button's shape (133 × 72 in the layout), big enough to stay sharp on 4K.
+    //Smaller pictures are centred on a transparent canvas of this size, so they keep their relative size.
+    private const int LogoWidth = 400;
+    private const int LogoHeight = 225;
+    private Image _logo = null!;
+    private string LogoPath => Path.Combine(Path.GetDirectoryName(_selector.FileName)!, "logo.png");
 
     //display tracking: the window is resized when it's dragged onto a screen with a different height
     private DispatcherTimer _displayWatcher = null!;
@@ -112,8 +127,18 @@ public class Program:Application
 
         _window.Content = BuildUi();
         RefreshNames();
+        LoadLogo();
         _window.Activate();
         SetWindowIcon(appWindow);       //after Activate: on Linux the window only exists from here
+        //stay above other windows, even when another app has focus.
+        //Set once the window is really on screen: on Linux it has no effect before that.
+        bool onTopSet = false;
+        _window.Activated += (_, _) =>
+        {
+            if (onTopSet || appWindow.Presenter is not OverlappedPresenter shownPresenter) return;
+            shownPresenter.IsAlwaysOnTop = true;
+            onTopSet = true;
+        };
 
         //twice a second, check whether the window was dragged onto a different screen
         _lastPosition = appWindow.Position;
@@ -237,7 +262,7 @@ public class Program:Application
     {
         Grid g = new Grid()
         {
-            Padding = new Thickness(12),
+            Padding = new Thickness(LayoutPadding),
             RowSpacing = 8,
             ColumnSpacing = 8,
 
@@ -276,6 +301,17 @@ public class Program:Application
         next.Click += (_, _) => { _selector.Next(); RefreshNames(); };
         elements.Add(next);
 
+        //picture in the bottom-left corner (empty until one is chosen in Options)
+        _logo = new Image()
+        {
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        Grid.SetRow(_logo, 10);
+        Grid.SetColumn(_logo, 0);
+        Grid.SetColumnSpan(_logo, 3);
+        elements.Add(_logo);
+
         TransparentButton prev = new TransparentButton("Previous", _settings.ButtonText, _settings.ButtonFontSize);
         Grid.SetRow(prev, 10);
         Grid.SetColumn(prev, 3);
@@ -287,15 +323,20 @@ public class Program:Application
         Grid.SetRow(options, 0);
         Grid.SetColumn(options, 0);
         Grid.SetColumnSpan(options, 3);
-        //drop-down list: Settings (colours, text sizes, Shuffle) and Edit File (singer list in the text editor)
+        //drop-down list: Settings (colours, text sizes, Shuffle), Edit File (singer list in the text editor)
+        //and Add/Change Image / Remove Image (picture in the bottom-left corner)
         MenuFlyoutItem settingsItem = new MenuFlyoutItem() { Text = "Settings" };
         settingsItem.Click += (_, _) => OpenOptionsMenu();
         MenuFlyoutItem editFileItem = new MenuFlyoutItem() { Text = "Edit File" };
         editFileItem.Click += (_, _) => OpenFile();
+        MenuFlyoutItem imageItem = new MenuFlyoutItem() { Text = $"Add/Change Image (up to {LogoWidth}×{LogoHeight} px)" };
+        imageItem.Click += (_, _) => ChangeImage();
+        MenuFlyoutItem removeImageItem = new MenuFlyoutItem() { Text = "Remove Image" };
+        removeImageItem.Click += (_, _) => RemoveImage();
         MenuFlyout optionsList = new MenuFlyout()
         {
             Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft,
-            Items = { settingsItem, editFileItem },
+            Items = { settingsItem, editFileItem, imageItem, removeImageItem },
         };
         //the drop-down is drawn outside the scaled layout, so scale its text the same way the window is scaled
         optionsList.Opening += (_, _) =>
@@ -303,6 +344,9 @@ public class Program:Application
             double scale = _window?.Content is FrameworkElement root && root.ActualHeight > 0 ? root.ActualHeight / DesignHeight : 1;
             settingsItem.FontSize = 22 * scale;
             editFileItem.FontSize = 22 * scale;
+            imageItem.FontSize = 22 * scale;
+            removeImageItem.FontSize = 22 * scale;
+            removeImageItem.IsEnabled = File.Exists(LogoPath);     //greyed out when there's no picture
         };
         options.Flyout = optionsList;
         elements.Add(options);
@@ -421,6 +465,15 @@ public class Program:Application
     /// </summary>
     private void ShowMenu(string title, UIElement body, params (string label, Action action)[] actions)
     {
+        ShowMenu(title, body, new Thickness(0), actions);
+    }
+
+    /// <summary>
+    /// Same as above, with a gap around the menu (e.g. to line it up with a button: the Add and Remove
+    /// menus use the window padding so their top and right edge match the Add button's).
+    /// </summary>
+    private void ShowMenu(string title, UIElement body, Thickness margin, params (string label, Action action)[] actions)
+    {
         //dark see-through layer that blocks clicks on the screen behind
         Grid overlay = new Grid() { Background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)) };
 
@@ -466,6 +519,7 @@ public class Program:Application
             MaxWidth = DesignWidth,                             //never wider than the window
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,          //grows downwards; can't be taller than the window
+            Margin = margin,
             Padding = new Thickness(20),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(2),
@@ -476,6 +530,9 @@ public class Program:Application
 
         _stage.Children.Add(overlay);
     }
+
+    //Add / Remove menus: top and right edge line up with the Add button (bottom gap keeps a full-height menu inside the window)
+    private static readonly Thickness AddButtonEdges = new Thickness(0, LayoutPadding, LayoutPadding, LayoutPadding);
 
     /// <summary>
     /// Scrollable list of check boxes (with "Select all" on top).
@@ -533,20 +590,20 @@ public class Program:Application
 
         if (_selector.Order.Count == 0)
         {
-            ShowMenu("Add Singer", body,
+            ShowMenu("Add Singer", body, AddButtonEdges,
                 ("Add (auto shuffle)", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
                 ("Cancel", () => { }));
         }
         else if (_settings.ShowShuffle)
         {
-            ShowMenu("Add Singer", body,
+            ShowMenu("Add Singer", body, AddButtonEdges,
                 ("Add", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
                 ("Shuffle", () => { _selector.InsertSingers(getChecked()); _selector.Shuffle(); RefreshNames(); }),
                 ("Cancel", () => { }));
         }
         else
         {
-            ShowMenu("Add Singer", body,
+            ShowMenu("Add Singer", body, AddButtonEdges,
                 ("Add", () => { _selector.InsertSingers(getChecked()); RefreshNames(); }),
                 ("Cancel", () => { }));
         }
@@ -559,7 +616,7 @@ public class Program:Application
             _selector.Present(),
             "Nobody has been added yet.");
 
-        ShowMenu("Remove Singer", body,
+        ShowMenu("Remove Singer", body, AddButtonEdges,
             ("Remove", () => { _selector.RemoveSingers(getChecked()); RefreshNames(); }),
             ("Cancel", () => { }));
     }
@@ -712,6 +769,106 @@ public class Program:Application
         }
         _gradientColor.Color = _settings.Gradient;
         RefreshNames();     //redraws names with the new text colour, size and highlight
+    }
+
+    // ---------- Add/Change Image ----------
+
+    /// <summary>
+    /// Let the user pick a .png or .jpg of at most LogoWidth × LogoHeight pixels with the system's file picker,
+    /// then save it as logo.png next to settings.txt (always the same name, so a new pick replaces the old one).
+    /// A smaller picture is centred on a transparent LogoWidth × LogoHeight canvas, so the gaps around it show through.
+    /// </summary>
+    private async void ChangeImage()
+    {
+        FileOpenPicker picker = new FileOpenPicker()
+        {
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary,
+            ViewMode = PickerViewMode.Thumbnail,
+        };
+        picker.FileTypeFilter.Add(".png");
+        picker.FileTypeFilter.Add(".jpg");
+        picker.FileTypeFilter.Add(".jpeg");
+
+        StorageFile? file = await picker.PickSingleFileAsync();
+        if (file == null) return;       //cancelled
+
+        try
+        {
+            using SKBitmap? image = SKBitmap.Decode(file.Path);
+            if (image == null)
+            {
+                ShowMessage("Add/Change Image", $"Couldn't read this picture:\n{file.Path}");
+                return;
+            }
+            if (image.Width > LogoWidth || image.Height > LogoHeight)
+            {
+                ShowMessage("Add/Change Image",
+                    $"The picture can be at most {LogoWidth} × {LogoHeight} pixels.\nThis one is {image.Width} × {image.Height}.");
+                return;
+            }
+
+            //full-size transparent canvas with the picture in the middle
+            using SKBitmap canvasImage = new SKBitmap(LogoWidth, LogoHeight, SKColorType.Rgba8888, SKAlphaType.Premul);
+            using (SKCanvas canvas = new SKCanvas(canvasImage))
+            {
+                canvas.Clear(SKColors.Transparent);
+                using SKImage picture = SKImage.FromBitmap(image);
+                canvas.DrawImage(picture, (LogoWidth - image.Width) / 2f, (LogoHeight - image.Height) / 2f, SKSamplingOptions.Default);   //drawn 1:1, not resized
+            }
+
+            //saved as PNG whatever the original format (PNG keeps the transparency), so the name never changes
+            using SKData png = canvasImage.Encode(SKEncodedImageFormat.Png, 100);
+            Directory.CreateDirectory(Path.GetDirectoryName(LogoPath)!);
+            File.WriteAllBytes(LogoPath, png.ToArray());
+            LoadLogo();
+        }
+        catch (Exception ex)
+        {
+            ShowMessage("Add/Change Image", $"Couldn't use this picture:\n{ex.Message}");
+        }
+    }
+
+    /// <summary>Delete logo.png and clear the bottom-left corner.</summary>
+    private void RemoveImage()
+    {
+        try
+        {
+            File.Delete(LogoPath);      //no error if it's already gone
+        }
+        catch (Exception ex)
+        {
+            ShowMessage("Remove Image", $"Couldn't remove the picture:\n{ex.Message}");
+        }
+        LoadLogo();
+    }
+
+    /// <summary>Show logo.png in the bottom-left corner, if there is one.</summary>
+    private void LoadLogo()
+    {
+        if (!File.Exists(LogoPath))
+        {
+            _logo.Source = null;
+            return;
+        }
+
+        //load from a copy in memory, so a replaced logo.png isn't shown from the old cached picture
+        BitmapImage bitmap = new BitmapImage();
+        bitmap.SetSource(new MemoryStream(File.ReadAllBytes(LogoPath)).AsRandomAccessStream());
+        _logo.Source = bitmap;
+    }
+
+    /// <summary>A small menu with a message and an OK button.</summary>
+    private void ShowMessage(string title, string text)
+    {
+        TextBlock message = new TextBlock()
+        {
+            Text = text,
+            FontSize = 18,
+            MaxWidth = 360,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = new SolidColorBrush(Colors.White),
+        };
+        ShowMenu(title, message, ("OK", () => { }));
     }
 
     // ---------- Edit File ----------
